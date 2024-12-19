@@ -111,3 +111,6 @@ __pypackages__/
 
 # Cython debug symbols
 cython_debug/
+
+# MACOS files
+.DS_Store

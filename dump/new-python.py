@@ -1,63 +1,43 @@
-# url_classification.py
+# URL Classification with XGBoost and Hash Encoding
 
-"""
-URL Classification with XGBoost
-
-This script demonstrates how to classify URLs as malicious or benign using the XGBoost classifier.
-The process includes data loading, feature engineering, model training with cross-validation,
-and making predictions on new URLs.
-"""
-
-# ======================================
-# 1. Importing Libraries
-# ======================================
-
-import csv
-import itertools
-import numpy as np
-import os
-import re
-import string
 import hashlib
-from urllib.parse import urlparse, parse_qs, urlsplit
-
-import pandas as pd
-from joblib import dump, load
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.preprocessing import LabelEncoder
-
-import tldextract
-# from googlesearch import search  # Uncomment if needed
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-from wordcloud import WordCloud
-
-from sklearn import metrics
-from xgboost import XGBClassifier
-from imblearn.over_sampling import RandomOverSampler
-
+from IPython.display import display
+from category_encoders import TargetEncoder
 import ipaddress
+from imblearn.over_sampling import RandomOverSampler
+from xgboost import XGBClassifier
+from sklearn import metrics
+from wordcloud import WordCloud
+import seaborn as sns
+import matplotlib.pyplot as plt
+import tldextract
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from joblib import dump, load
+import pandas as pd
+from urllib.parse import urlparse, parse_qs, urlsplit
+import re
+import numpy as np
+from sklearn.model_selection import GridSearchCV
+import numpy as np
+import pandas as pd
+from xgboost import XGBClassifier
 
-# Set plot style for better aesthetics
+
 sns.set(style="whitegrid")
 
-# ======================================
 # 2. Configuration
-# ======================================
 
 # Path to your dataset CSV file
-DATA_PATH = './malicious_phish.csv'  # <-- Replace this with your actual path
+DATA_PATH = './malicious_phish.csv'
 
 # Path to save models and encoders
-MODEL_PATH = 'final_xgb_model.pkl'
-ENCODER_PATH = 'target_encoder.pkl'
-LABEL_ENCODER_PATH = 'label_encoder.pkl'
+MODEL_PATH = './models/final_xgb_model.pkl'
+ENCODER_PATH = './models/target_encoder.pkl'
+LABEL_ENCODER_PATH = './models/label_encoder.pkl'
 
-# ======================================
 # 3. Feature Engineering Functions
-# ======================================
 
 # Daftar TLD terpercaya
 TRUSTED_TLDS = {
@@ -123,8 +103,9 @@ TRUSTED_TLDS = {
     'eu', 'asia', 'mobi', 'museum', 'travel', 'jobs', 'name', 'post', 'tel', 'tv', 'cc',
     'me', 'us', 'ca', 'uk', 'de', 'jp', 'fr', 'au', 'cn', 'br', 'ru', 'in', 'za', 'sg',
     'kr', 'it', 'es', 'nl', 'se', 'no', 'fi', 'dk', 'be', 'ch', 'at', 'pl', 'cz', 'hu',
-    'sk', 'si', 'ro', 'bg', 'gr', 'tr', 'il', 'my', 'th', 'vn', 'id', 'ph', 'tw', 'hk',
+    'sk', 'si', 'ro', 'bg', 'gr', 'tr', 'il', 'my', 'th', 'vn', 'id', 'ph', 'tw', 'hk'
 }
+
 
 def secure_http(url):
     """Count the number of 'https' occurrences in the URL."""
@@ -133,12 +114,14 @@ def secure_http(url):
     except:
         return 0
 
+
 def url_length(url):
     """Calculate the length of the URL excluding the scheme."""
     try:
         return len(url.replace('http://', '', 1).replace('https://', '', 1))
     except:
         return 0
+
 
 def find_subdomain(url):
     """Extract the subdomain from the URL."""
@@ -148,6 +131,7 @@ def find_subdomain(url):
     except:
         return 'missing'
 
+
 def get_tld_func(url):
     """Extract the top-level domain (TLD) from the URL."""
     try:
@@ -155,6 +139,7 @@ def get_tld_func(url):
         return ext.suffix if ext.suffix else 'missing'
     except:
         return 'missing'
+
 
 def domain_token_count(url):
     """Count the number of tokens in the domain."""
@@ -171,6 +156,7 @@ def domain_token_count(url):
     except:
         return 0
 
+
 def hostname_length(url):
     """Calculate the length of the hostname."""
     try:
@@ -180,6 +166,7 @@ def hostname_length(url):
     except:
         return 0
 
+
 def extract_root_domain(url):
     """Extract the root domain from the URL."""
     try:
@@ -188,12 +175,14 @@ def extract_root_domain(url):
     except:
         return 'missing'
 
+
 def count_dot(url):
     """Count the number of dots in the URL."""
     try:
         return url.count('.')
     except:
         return 0
+
 
 def no_of_dir(url):
     """Count the number of directories in the URL path."""
@@ -203,12 +192,14 @@ def no_of_dir(url):
     except:
         return 0
 
+
 def digit_count(url):
     """Count the number of digits in the URL."""
     try:
         return sum(c.isdigit() for c in url)
     except:
         return 0
+
 
 def letter_count(url):
     """Count the number of letters in the URL."""
@@ -217,6 +208,7 @@ def letter_count(url):
     except:
         return 0
 
+
 def fd_length(url):
     """Calculate the length of the first directory in the URL path."""
     try:
@@ -224,6 +216,7 @@ def fd_length(url):
         return len(urlpath.split('/')[1]) if len(urlpath.split('/')) > 1 else 0
     except:
         return 0
+
 
 def path_length(url):
     """Calculate the length of the URL path."""
@@ -234,6 +227,7 @@ def path_length(url):
     except:
         return 0
 
+
 def num_query_components(url):
     """Count the number of query components in the URL."""
     try:
@@ -242,6 +236,7 @@ def num_query_components(url):
         return len(parse_qs(query))
     except:
         return 0
+
 
 def shortening_service(url):
     """Detect if the URL is using a URL shortening service."""
@@ -259,13 +254,14 @@ def shortening_service(url):
     except:
         return 0
 
+
 def abnormal_url(url):
     """
     Detect if the hostname appears more than once in the URL.
-    
+
     Parameters:
     - url (str): The URL to analyze.
-    
+
     Returns:
     - int: 1 jika hostname muncul lebih dari sekali, 0 jika tidak.
     """
@@ -274,15 +270,16 @@ def abnormal_url(url):
         hostname = parsed_url.hostname
         if not hostname:
             return 0
-        
+
         # Menghitung jumlah kemunculan hostname dalam URL
         occurrences = len(re.findall(re.escape(hostname), url))
-        
+
         # Jika hostname muncul lebih dari sekali, dianggap abnormal
         return 1 if occurrences > 1 else 0
     except Exception as e:
         print(f"Error processing URL '{url}': {e}")
         return 0
+
 
 def suspicious_words(url):
     """Detect suspicious words in the URL."""
@@ -297,11 +294,11 @@ def suspicious_words(url):
             r'log|store|save|archive|backup|copy|duplicate|replicate|mirror|clone|emulate|simulate|imitate|mimic|reproduce|duplicate|copy|paste|cut|edit|modify|'
             r'alter|change|transform|convert|translate|transcribe|encode|decode|encrypt|decrypt|compress|decompress|zip|unzip|archive|extract|unpack|package|bundle|wrap|'
             r'unwrap|unbundle|unpack|install|uninstall|setup|configure|customize|personalize|optimize|tune|adjust|calibrate|fine-tune|balance|equalize|normalize|standardize|'
-            r'validate|verify|authenticate|authorize|approve|certify|accredit|license|register|enroll|subscribe|sign|join|apply|request|submit|send|receive|accept|reject)\b'
-            , re.IGNORECASE)
+            r'validate|verify|authenticate|authorize|approve|certify|accredit|license|register|enroll|subscribe|sign|join|apply|request|submit|send|receive|accept|reject|', re.IGNORECASE)
         return 1 if pattern.search(url) else 0
     except:
         return 0
+
 
 def having_ip_address(url):
     """Detect if the URL contains an IP address."""
@@ -318,15 +315,17 @@ def having_ip_address(url):
     except:
         return 0
 
+
 def contains_file(url):
     """Check if the URL contains certain file extensions."""
     try:
         filetypes = ['.html', '.txt', '.pdf', '.jpg', '.png', '.doc', '.xls', '.csv', '.mp3', '.mp4', '.exe',
-                    '.docx', '.xlsx', '.zip', '.rar', '.ace', '.gz', '.js']
+                     '.docx', '.xlsx', '.zip', '.rar', '.ace', '.gz', '.js']
         url_path = urlparse(url).path.lower()
         return 1 if any(ext in url_path for ext in filetypes) else 0
     except:
         return 0
+
 
 def is_trusted_tld(url, weight=10, https_bonus=5):
     """
@@ -361,10 +360,10 @@ def is_trusted_tld(url, weight=10, https_bonus=5):
         print(f"Error processing URL '{url}': {e}")
         return 0
 
+
 # ======================================
 # 4. Loading the Dataset
 # ======================================
-
 # Load Data
 try:
     data = pd.read_csv(DATA_PATH)
@@ -379,7 +378,6 @@ except Exception as e:
 # ======================================
 # 5. Exploring the Dataset
 # ======================================
-
 print("\nFirst 5 rows of the dataset:")
 print(data.head())
 
@@ -390,10 +388,12 @@ print(data['type'].value_counts())
 # 6. Visualizing Word Clouds
 # ======================================
 
+
 def plot_wordcloud(data_subset, title):
     """Plot a word cloud for a given subset of data."""
     combined_urls = " ".join(i for i in data_subset.url if isinstance(i, str))
-    wordcloud = WordCloud(width=1600, height=800, colormap='Paired', background_color='black').generate(combined_urls)
+    wordcloud = WordCloud(width=1600, height=800, colormap='Paired',
+                          background_color='black').generate(combined_urls)
     plt.figure(figsize=(12, 14), facecolor='k')
     plt.imshow(wordcloud, interpolation='bilinear')
     plt.axis("off")
@@ -401,11 +401,14 @@ def plot_wordcloud(data_subset, title):
     plt.tight_layout(pad=0)
     plt.show()
 
+
 # Plot wordclouds for each class
 classes = data['type'].unique()
 for cls in classes:
     subset = data[data.type == cls]
     plot_wordcloud(subset, f"{cls.capitalize()} URLs Wordcloud")
+
+# *This will display word clouds for each class (`benign`, `malicious`, etc.), highlighting the most frequent words in the URLs.*
 
 # ======================================
 # 7. Feature Engineering
@@ -423,10 +426,14 @@ data['hostname_length'] = data['url'].apply(hostname_length)
 data['root_domain'] = data['url'].apply(extract_root_domain)
 data['count.'] = data['url'].apply(count_dot)
 data['count_dir'] = data['url'].apply(no_of_dir)
-data['count%'] = data['url'].apply(lambda x: x.count('%') if isinstance(x, str) else 0)
-data['count?'] = data['url'].apply(lambda x: x.count('?') if isinstance(x, str) else 0)
-data['count-'] = data['url'].apply(lambda x: x.count('-') if isinstance(x, str) else 0)
-data['count='] = data['url'].apply(lambda x: x.count('=') if isinstance(x, str) else 0)
+data['count%'] = data['url'].apply(
+    lambda x: x.count('%') if isinstance(x, str) else 0)
+data['count?'] = data['url'].apply(
+    lambda x: x.count('?') if isinstance(x, str) else 0)
+data['count-'] = data['url'].apply(lambda x: x.count('-')
+                                   if isinstance(x, str) else 0)
+data['count='] = data['url'].apply(
+    lambda x: x.count('=') if isinstance(x, str) else 0)
 data['count-digits'] = data['url'].apply(digit_count)
 data['count-letters'] = data['url'].apply(letter_count)
 data['fd_length'] = data['url'].apply(fd_length)
@@ -438,25 +445,60 @@ data['sus_url'] = data['url'].apply(suspicious_words)
 data['use_of_ip'] = data['url'].apply(having_ip_address)
 data['contains_file'] = data['url'].apply(contains_file)
 
-# Terapkan fitur is_trusted_tld dengan parameter weight dan https_bonus yang lebih tinggi
-data['is_trusted_tld'] = data['url'].apply(lambda url: is_trusted_tld(url, weight=10, https_bonus=5))
+# Apply is_trusted_tld function
+data['is_trusted_tld'] = data['url'].apply(
+    lambda url: is_trusted_tld(url, weight=10, https_bonus=5))
 
-# Tambahkan fitur kombinasi
+# Add a combined feature
 data['trusted_and_https'] = data['is_trusted_tld'] * data['secure_http']
 
-# Pilih Feature Columns, tambahkan 'trusted_and_https' jika Anda menggunakan fitur ini
+# ======================================
+# 8. Hash Encoding for 'tld' Column
+# ======================================
+
+
+def hash_encoding(value, hash_function=hashlib.md5, base=16, mod=10**9):
+    """
+    Function to hash encode a value.
+
+    Parameters:
+    - value: The categorical value to hash encode.
+    - hash_function: Hash function from hashlib to use (default: hashlib.md5).
+    - base: Base to interpret the hash value as (default: 16 for hexadecimal).
+    - mod: Modulo value to limit the size of the hashed integer.
+
+    Returns:
+    - int: The hashed numerical representation of the value.
+    """
+    try:
+        # Hash the value using the specified hash function
+        hashed_value = hash_function(value.encode()).hexdigest()
+        # Convert the hash to an integer and apply modulo to limit size
+        return int(hashed_value, base) % mod
+    except Exception as e:
+        print(f"Error encoding value '{value}': {e}")
+        return 0
+
+
+# Apply hash encoding to the 'tld' column
+data['tld_hashed'] = data['tld'].apply(lambda x: hash_encoding(x))
+
+# Convert 'tld_hashed' to integer type explicitly
+data['tld_hashed'] = data['tld_hashed'].astype(int)
+
+# ======================================
+# 9. Feature Selection
+# ======================================
+
+# Update feature_columns to include 'tld_hashed' and exclude 'tld'
 feature_columns = [
-    'secure_http', 'url_length', 'find_subdomain', 'tld', 'domain_token_count',
+    'secure_http', 'url_length', 'find_subdomain', 'tld_hashed', 'domain_token_count',
     'hostname_length', 'root_domain', 'count.', 'count_dir', 'count%', 'count?',
     'count-', 'count=', 'count-digits', 'count-letters', 'fd_length',
     'path_length', 'NumQueryComponents', 'short_url', 'abnormal_url',
-    'sus_url', 'use_of_ip', 'contains_file', 'is_trusted_tld', 
+    'sus_url', 'use_of_ip', 'contains_file', 'is_trusted_tld',
     'trusted_and_https'
 ]
-
-# ======================================
-# 8. Feature Selection
-# ======================================
 
 # Select the relevant features for model training
 X = data[feature_columns]
@@ -467,7 +509,7 @@ print("Target vector y distribution:")
 print(y.value_counts())
 
 # ======================================
-# 9. Label Encoding
+# 10. Label Encoding
 # ======================================
 
 print("\nEncoding target labels...")
@@ -483,24 +525,25 @@ dump(label_encoder, LABEL_ENCODER_PATH)
 print(f"Label encoder saved to {LABEL_ENCODER_PATH}")
 
 # ======================================
-# 10. Handling Missing Values for Categorical Features
+# 11. Handling Missing Values for Categorical Features
 # ======================================
 
 # Mengisi nilai null di fitur kategorikal yang akan di-encode
-X[['find_subdomain', 'tld', 'root_domain']] = X[['find_subdomain', 'tld', 'root_domain']].fillna('missing')
+# Karena 'tld' sudah di-hash, kita hanya perlu mengisi 'find_subdomain' dan 'root_domain'
+X[['find_subdomain', 'root_domain']] = X[[
+    'find_subdomain', 'root_domain']].fillna('missing')
 
 # Verifikasi tidak ada nilai null di kolom kategorikal
 print("\nNull values after filling:")
-print(X[['find_subdomain', 'tld', 'root_domain']].isnull().sum())
+print(X[['find_subdomain', 'root_domain']].isnull().sum())
 
 # ======================================
-# 11. Encoding Categorical Features with TargetEncoder
+# 12. Encoding Categorical Features with TargetEncoder
 # ======================================
-
-from category_encoders import TargetEncoder
 
 # Initialize the TargetEncoder dengan kolom yang akan di-encode
-encoder = TargetEncoder(cols=['find_subdomain', 'tld', 'root_domain'])
+# 'tld_hashed' adalah numerik, jadi tidak perlu di-encode lagi
+encoder = TargetEncoder(cols=['find_subdomain', 'root_domain'])
 
 # Fit encoder pada data training
 encoder.fit(X, y_encoded)
@@ -516,7 +559,7 @@ dump(encoder, ENCODER_PATH)
 print(f"Target encoder saved to {ENCODER_PATH}")
 
 # ======================================
-# 12. Cross-Validation with XGBoost
+# 13. Cross-Validation with XGBoost
 # ======================================
 
 print("\nStarting cross-validation with XGBoost classifier...")
@@ -554,13 +597,17 @@ for train_index, test_index in kf.split(X_encoded, y_encoded):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     # Before Oversampling
-    labels_before = label_encoder.inverse_transform(class_distribution_before.index)
-    ax1.pie(class_distribution_before, labels=labels_before, autopct=lambda p: f'{int(p * class_distribution_before.sum() / 100)}')
+    labels_before = label_encoder.inverse_transform(
+        class_distribution_before.index)
+    ax1.pie(class_distribution_before, labels=labels_before,
+            autopct=lambda p: f'{int(p * class_distribution_before.sum() / 100)}')
     ax1.set_title(f"Before Oversampling - Fold {fold_number}")
 
     # After Oversampling
-    labels_after = label_encoder.inverse_transform(class_distribution_after.index)
-    ax2.pie(class_distribution_after, labels=labels_after, autopct=lambda p: f'{int(p * class_distribution_after.sum() / 100)}')
+    labels_after = label_encoder.inverse_transform(
+        class_distribution_after.index)
+    ax2.pie(class_distribution_after, labels=labels_after,
+            autopct=lambda p: f'{int(p * class_distribution_after.sum() / 100)}')
     ax2.set_title(f"After Oversampling - Fold {fold_number}")
 
     plt.show()
@@ -583,12 +630,14 @@ for train_index, test_index in kf.split(X_encoded, y_encoded):
     y_pred_xgb = xgb_model.predict(X_test_fold)
 
     # Confusion Matrix
-    cm_fold = metrics.confusion_matrix(y_test_fold, y_pred_xgb, labels=np.arange(len(label_encoder.classes_)))
+    cm_fold = metrics.confusion_matrix(
+        y_test_fold, y_pred_xgb, labels=np.arange(len(label_encoder.classes_)))
     confusion_matrices.append(cm_fold)
 
     # Classification Report
     print("\nClassification Report:")
-    print(metrics.classification_report(y_test_fold, y_pred_xgb, target_names=label_encoder.classes_))
+    print(metrics.classification_report(y_test_fold,
+          y_pred_xgb, target_names=label_encoder.classes_))
 
     # Accuracy Score
     score = metrics.accuracy_score(y_test_fold, y_pred_xgb)
@@ -606,8 +655,10 @@ for train_index, test_index in kf.split(X_encoded, y_encoded):
     plt.show()
 
     # Feature Importances
-    feat_importances = pd.Series(xgb_model.feature_importances_, index=X_train_ros.columns)
-    feat_importances.sort_values(ascending=True).plot(kind="barh", figsize=(10, 6))
+    feat_importances = pd.Series(
+        xgb_model.feature_importances_, index=X_train_ros.columns)
+    feat_importances.sort_values(ascending=True).plot(
+        kind="barh", figsize=(10, 6))
     plt.title(f'Feature Importances - Fold {fold_number}')
     plt.xlabel('Importance Score')
     plt.ylabel('Features')
@@ -619,7 +670,7 @@ for train_index, test_index in kf.split(X_encoded, y_encoded):
     fold_number += 1
 
 # ======================================
-# 13. Summary of Cross-Validation Metrics
+# 14. Summary of Cross-Validation Metrics
 # ======================================
 
 # Average Accuracy
@@ -627,7 +678,8 @@ average_accuracy = np.mean(accuracy_scores)
 print(f"\nAverage Accuracy Across {num_folds} Folds: {average_accuracy:.3f}")
 
 # Aggregate Feature Importances
-average_feature_importances = pd.concat(feature_importances_list, axis=1).mean(axis=1).sort_values()
+average_feature_importances = pd.concat(
+    feature_importances_list, axis=1).mean(axis=1).sort_values()
 average_feature_importances.plot(kind="barh", figsize=(10, 6))
 plt.title('Average Feature Importances Across Folds')
 plt.xlabel('Importance Score')
@@ -635,13 +687,14 @@ plt.ylabel('Features')
 plt.show()
 
 # ======================================
-# 14. Training the Final Model
+# 15. Training the Final Model
 # ======================================
 
 print("\nTraining final model on the entire dataset...")
 
 # Initialize RandomOverSampler for the entire dataset
-ros_final = RandomOverSampler(sampling_strategy="not majority", random_state=42)
+ros_final = RandomOverSampler(
+    sampling_strategy="not majority", random_state=42)
 X_resampled, y_resampled = ros_final.fit_resample(X_encoded, y_encoded)
 
 print("\nClass Distribution After Oversampling:")
@@ -651,32 +704,96 @@ print("Classes:")
 print(label_encoder.inverse_transform(class_dist_final.index))
 
 # Plot final class distribution
-plt.figure(figsize=(6,6))
+plt.figure(figsize=(6, 6))
 labels_final = label_encoder.inverse_transform(class_dist_final.index)
-plt.pie(class_dist_final, labels=labels_final, autopct=lambda p: f'{int(p * class_dist_final.sum() / 100)}')
+plt.pie(class_dist_final, labels=labels_final,
+        autopct=lambda p: f'{int(p * class_dist_final.sum() / 100)}')
 plt.title("Class Distribution After Oversampling - Final Model")
 plt.show()
 
-# Initialize XGBoost Classifier
-final_xgb = XGBClassifier(
-    n_estimators=100,
-    learning_rate=0.1,
-    max_depth=6,
+# param_grid = {
+#     'n_estimators': [100, 200],
+#     'max_depth': [4, 6, 8],
+#     'learning_rate': [0.01, 0.1],
+#     'subsample': [0.8, 1.0],
+#     'colsample_bytree': [0.8, 1.0],
+#     'min_child_weight': [1, 3],
+#     'gamma': [0, 0.1]
+# }
+
+# param_grid = {
+#     'n_estimators': [100],
+#     'max_depth': [4, 6],
+#     'learning_rate': [0.1],
+#     'subsample': [0.8],
+#     'colsample_bytree': [0.8],
+#     'min_child_weight': [1],
+#     'gamma': [0]
+# }
+
+param_grid = {
+    'n_estimators': [100],
+    'max_depth': [4, 6, 8],
+    'learning_rate': [0.01, 0.1],
+    'subsample': [0.8],
+    'colsample_bytree': [0.8],
+    'min_child_weight': [1],
+    'gamma': [0, 0.1]  # Minimum loss reduction for split
+}
+
+# Initialize base XGBoost model
+base_xgb = XGBClassifier(
     random_state=42,
     eval_metric='mlogloss',
     use_label_encoder=False,
     n_jobs=-1
 )
 
+# Initialize GridSearchCV
+grid_search = GridSearchCV(
+    estimator=base_xgb,
+    param_grid=param_grid,
+    cv=5,
+    scoring='accuracy',
+    n_jobs=-1,
+    verbose=2
+)
+
+
+print("\nPerforming GridSearchCV...")
+grid_search.fit(X_resampled, y_resampled)
+
+# Print best parameters and score
+print("\nBest parameters found:")
+print(grid_search.best_params_)
+print(f"\nBest cross-validation score: {grid_search.best_score_:.3f}")
+
+# Use best model for final training
+final_xgb = grid_search.best_estimator_
+
+# Train final model with best parameters
+final_xgb.fit(X_resampled, y_resampled)
+
+# Save results to CSV
+cv_results = pd.DataFrame(grid_search.cv_results_)
+cv_results.to_csv('gridcv_results.csv', index=False)
+
 # Train the final model
 final_xgb.fit(X_resampled, y_resampled)
 
 # Feature Importances for Final Model
-feat_importances_final = pd.Series(final_xgb.feature_importances_, index=X_resampled.columns)
+feat_importances_final = pd.Series(
+    final_xgb.feature_importances_, index=X_resampled.columns)
 feat_importances_final.sort_values().plot(kind="barh", figsize=(10, 6))
 plt.title('Final Model Feature Importances')
 plt.xlabel('Importance Score')
 plt.ylabel('Features')
+plt.show()
+
+plt.figure(figsize=(12, 6))
+param_scores = cv_results[['param_max_depth', 'mean_test_score']]
+sns.boxplot(x='param_max_depth', y='mean_test_score', data=param_scores)
+plt.title('Max Depth vs Mean Test Score')
 plt.show()
 
 # Save the final model
@@ -684,7 +801,7 @@ dump(final_xgb, MODEL_PATH)
 print(f"Final XGBoost model saved to {MODEL_PATH}")
 
 # ======================================
-# 15. Predicting on Test URLs
+# 16. Predicting on Test URLs
 # ======================================
 
 print("\nPreparing test URLs for prediction...")
@@ -696,13 +813,13 @@ test_urls = [
     'https://www.instagram.com', 'https://www.microsoft.com', 'https://www.apple.com', 'https://www.github.com',
     'https://www.wikipedia.org', 'https://www.quora.com', 'https://www.pinterest.com', 'https://www.ebay.com',
     'https://www.dropbox.com', 'https://www.paypal.com', 'https://www.salesforce.com', 'https://www.tesla.com',
-    "allmusic.com/album/crazy-from-the-heat-r16990", 
-    "http://peluqueriadeautor.com/index.php?option=com_virtuemart&page=shop.browse&category_id=31&Itemid=70", 
-    "http://9779.info/%E5%84%BF%E7%AB%A5%E7%AB%8B%E4%BD", 
-    "http://9779.info/%E5%84%BF%E7%AB%A5%E7%AB%8B%E4%BD", 
-    "http://alexpay2.beget.tech", 
+    "allmusic.com/album/crazy-from-the-heat-r16990",
+    "http://peluqueriadeautor.com/index.php?option=com_virtuemart&page=shop.browse&category_id=31&Itemid=70",
+    "http://9779.info/%E5%84%BF%E7%AB%A5%E7%AB%8B%E4%BD",
+    "http://9779.info/%E5%84%BF%E7%AB%A5%E7%AB%8B%E4%BD",
+    "http://alexpay2.beget.tech",
     'http://www.pn-wuppertal.de/links/2-linkseite/5-httpwwwkrebshilfede',
-    "https://spada.upnyk.ac.id/login/index.php", 
+    "https://spada.upnyk.ac.id/login/index.php",
     "https://bima.upnyk.ac.id/"
 ]
 
@@ -714,15 +831,22 @@ test_data['secure_http'] = test_data['url'].apply(secure_http)
 test_data['url_length'] = test_data['url'].apply(url_length)
 test_data['find_subdomain'] = test_data['url'].apply(find_subdomain)
 test_data['tld'] = test_data['url'].apply(get_tld_func)
+test_data['tld_hashed'] = test_data['tld'].apply(lambda x: hash_encoding(x))
+test_data['tld_hashed'] = test_data['tld_hashed'].astype(
+    int)  # Ensure numeric type
 test_data['domain_token_count'] = test_data['url'].apply(domain_token_count)
 test_data['hostname_length'] = test_data['url'].apply(hostname_length)
 test_data['root_domain'] = test_data['url'].apply(extract_root_domain)
 test_data['count.'] = test_data['url'].apply(count_dot)
 test_data['count_dir'] = test_data['url'].apply(no_of_dir)
-test_data['count%'] = test_data['url'].apply(lambda x: x.count('%') if isinstance(x, str) else 0)
-test_data['count?'] = test_data['url'].apply(lambda x: x.count('?') if isinstance(x, str) else 0)
-test_data['count-'] = test_data['url'].apply(lambda x: x.count('-') if isinstance(x, str) else 0)
-test_data['count='] = test_data['url'].apply(lambda x: x.count('=') if isinstance(x, str) else 0)
+test_data['count%'] = test_data['url'].apply(
+    lambda x: x.count('%') if isinstance(x, str) else 0)
+test_data['count?'] = test_data['url'].apply(
+    lambda x: x.count('?') if isinstance(x, str) else 0)
+test_data['count-'] = test_data['url'].apply(
+    lambda x: x.count('-') if isinstance(x, str) else 0)
+test_data['count='] = test_data['url'].apply(
+    lambda x: x.count('=') if isinstance(x, str) else 0)
 test_data['count-digits'] = test_data['url'].apply(digit_count)
 test_data['count-letters'] = test_data['url'].apply(letter_count)
 test_data['fd_length'] = test_data['url'].apply(fd_length)
@@ -734,24 +858,33 @@ test_data['sus_url'] = test_data['url'].apply(suspicious_words)
 test_data['use_of_ip'] = test_data['url'].apply(having_ip_address)
 test_data['contains_file'] = test_data['url'].apply(contains_file)
 
-# Terapkan fitur is_trusted_tld dengan parameter weight dan https_bonus yang lebih tinggi
-test_data['is_trusted_tld'] = test_data['url'].apply(lambda url: is_trusted_tld(url, weight=10, https_bonus=5))
+# Apply is_trusted_tld function
+test_data['is_trusted_tld'] = test_data['url'].apply(
+    lambda url: is_trusted_tld(url, weight=10, https_bonus=5))
 
-# Tambahkan fitur kombinasi
-test_data['trusted_and_https'] = test_data['is_trusted_tld'] * test_data['secure_http']
+# Add a combined feature
+test_data['trusted_and_https'] = test_data['is_trusted_tld'] * \
+    test_data['secure_http']
 
-# Pilih Feature Columns
+# Select Feature Columns
 test_features = test_data[feature_columns]
 
 # Mengisi nilai null di fitur kategorikal yang akan di-encode
-test_features[['find_subdomain', 'tld', 'root_domain']] = test_features[['find_subdomain', 'tld', 'root_domain']].fillna('missing')
+# Karena 'tld' sudah di-hash, kita hanya perlu mengisi 'find_subdomain' dan 'root_domain'
+test_features[['find_subdomain', 'root_domain']] = test_features[[
+    'find_subdomain', 'root_domain']].fillna('missing')
+
+# ======================================
+# 17. Transform and Predict on Test Data
+# ======================================
 
 # Load the TargetEncoder and LabelEncoder
 try:
     encoder_loaded = load(ENCODER_PATH)
     label_encoder_loaded = load(LABEL_ENCODER_PATH)
     final_xgb_loaded = load(MODEL_PATH)
-    print(f"Encoders and model loaded successfully from {ENCODER_PATH}, {LABEL_ENCODER_PATH}, and {MODEL_PATH}.")
+    print(
+        f"Encoders and model loaded successfully from {ENCODER_PATH}, {LABEL_ENCODER_PATH}, and {MODEL_PATH}.")
 except FileNotFoundError as e:
     print(f"Error: {e}. Ensure that the encoder and model files exist.")
     exit(1)
@@ -769,27 +902,10 @@ print(X_test_encoded.head())
 test_predictions_encoded = final_xgb_loaded.predict(X_test_encoded)
 
 # Decode the predictions to original labels
-test_predictions = label_encoder_loaded.inverse_transform(test_predictions_encoded)
+test_predictions = label_encoder_loaded.inverse_transform(
+    test_predictions_encoded)
 
 # Tampilkan Prediksi
 test_data['Predicted_Type'] = test_predictions
 print("\nTest URL Predictions:")
-print(test_data[['url', 'Predicted_Type']])
-
-# ======================================
-# 16. Conclusion
-# ======================================
-
-"""
-In this script, we successfully built an XGBoost classifier to distinguish between benign and malicious URLs.
-Through comprehensive feature engineering and cross-validation, the model demonstrated robust performance.
-The final model is saved and can be used to predict the nature of new URLs, aiding in cybersecurity measures.
-
-**Note:** Ensure that all required libraries are installed in your Python environment.
-You can install any missing libraries using `pip`. For example:
-
-pip install pandas numpy scikit-learn xgboost imblearn matplotlib seaborn wordcloud tldextract
-
-Also, make sure that the dataset path (`DATA_PATH`) is correctly set to where your CSV file is located.
-"""
-
+display(test_data[['url', 'Predicted_Type']])
