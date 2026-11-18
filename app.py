@@ -3,12 +3,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
-import ipaddress
 from urllib.parse import urlparse, parse_qs
 import tldextract
 from joblib import load
-from category_encoders import TargetEncoder
-from xgboost import XGBClassifier
 
 # ======================================
 # 1. Konfigurasi Aplikasi Streamlit
@@ -415,6 +412,7 @@ def extract_features(url):
         'domain_hyphen_count': domain_hyphen_count(url),
         'uppercase_lowercase_ratio': uppercase_lowercase_ratio(url),
         'domain_length': domain_length(url),
+        'path_length': path_length(url),
         'query_string_length': query_string_length(url),
         'tld_reputation': tld_reputation(url),
         'suspicious_path_words': suspicious_path_words(url),
@@ -436,7 +434,7 @@ st.write("Masukkan URL di bawah ini untuk memprediksi apakah URL tersebut **MALI
 
 if 'prediction_history' not in st.session_state:
     st.session_state.prediction_history = pd.DataFrame(
-        columns=['URL', 'Prediction'])
+        columns=pd.Index(['URL', 'Prediction']))
 
 tab1, tab2, tab3 = st.tabs(["Prediksi URL", "Riwayat Prediksi", "📊 Dataset"])
 

@@ -1,39 +1,24 @@
+# pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportGeneralTypeIssues=false, reportOptionalMemberAccess=false, reportCallIssue=false, reportOptionalSubscript=false
 import joblib
-from IPython.display import display
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, KFold
 from xgboost import XGBClassifier, plot_importance
-from sklearn.model_selection import KFold
 from joblib import dump
 from category_encoders import TargetEncoder
 from urllib.parse import urlparse, parse_qs
 from constant_datas import TRUSTED_TLDS
-import csv
-import itertools
 import numpy as np
-import os
 import re
-import string
-import hashlib
-from urllib.parse import urlparse, parse_qs, urlsplit
 
 import pandas as pd
-from joblib import dump, load
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.model_selection import train_test_split, KFold
 from sklearn.preprocessing import LabelEncoder
 
 import tldextract
-# from googlesearch import search  # Uncomment if needed
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud
 
 from sklearn import metrics
-from xgboost import XGBClassifier
-from imblearn.over_sampling import RandomOverSampler
-
-import ipaddress
 
 # Set plot style for better aesthetics
 sns.set(style="whitegrid")
@@ -338,10 +323,10 @@ print(data['label'].value_counts())
 
 
 def plot_wordcloud(data_subset, title):
-    """Plot a word cloud for a given subset of data."""
+    """Generate a word cloud for a given subset of data."""
     combined_urls = " ".join(i for i in data_subset.url if isinstance(i, str))
-    wordcloud = WordCloud(width=1600, height=800, colormap='Paired',
-                          background_color='black').generate(combined_urls)
+    return WordCloud(width=1600, height=800, colormap='Paired',
+                     background_color='black').generate(combined_urls)
     # plt.figure(figsize=(12, 14), facecolor='k')
     # plt.imshow(wordcloud, interpolation='bilinear')
     # plt.axis("off")
@@ -515,23 +500,6 @@ print(X_encoded.head())
 # ======================================
 
 # Perform k-fold cross-validation to evaluate the model's performance across different subsets of the data.
-
-# Initialize TargetEncoder
-encoder = TargetEncoder(cols=cols_to_encode)
-
-# Fit encoder on training data
-encoder.fit(X, y_encoded)
-
-# Transform training data
-X_encoded = encoder.transform(X)
-
-# Initialize label encoder for target (assuming y_encoded is already encoded)
-label_encoder = LabelEncoder()
-# Ensure it's encoded before training
-y_encoded = label_encoder.fit_transform(y)
-
-# Ensure y_encoded is a 1D array
-y_encoded = y_encoded.ravel()
 
 # Initialize k-fold cross-validator
 num_folds = 8
@@ -861,4 +829,4 @@ test_predictions = label_encoder_loaded.inverse_transform(
 # Display predictions
 test_data['Predicted_Type'] = test_predictions
 print("\nTest URL Predictions:")
-display(test_data[['url', 'Predicted_Type']])
+print(test_data[['url', 'Predicted_Type']])

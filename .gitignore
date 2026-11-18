@@ -114,3 +114,7 @@ cython_debug/
 
 # MACOS files
 .DS_Store
+
+# Local experiment outputs
+models-experimental/
+models-testing/
