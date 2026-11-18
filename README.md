@@ -1,191 +1,89 @@
-# 🔍 URL Classification Project
+# URL Classification with XGBoost
 
-Welcome to the **URL Classification Project**! This repository houses two powerful applications designed to **classify URLs as malicious or benign**. Whether you're looking to understand the data processing and model training process or want an interactive web interface for real-time URL classification, you've come to the right place! 🚀
+Klasifikasi URL menjadi **benign** atau **malicious** menggunakan fitur leksikal dan XGBoost.
 
----
+Disusun oleh **Wayan Danu Tirta** (NIM 123200025), Universitas Pembangunan Nasional Veteran Yogyakarta.
 
-## 📜 Table of Contents
+## Ringkasan
 
-- [🎯 Overview](#-overview)
-- [🛠️ Setup Instructions](#️-setup-instructions)
-  - [1. Create a Virtual Environment](#1-create-a-virtual-environment)
-  - [2. Activate the Virtual Environment](#2-activate-the-virtual-environment)
-  - [3. Install Dependencies](#3-install-dependencies)
-- [🏃‍♂️ Running the Applications](#-running-the-applications)
-  - [A. Data Processing and Model Training](#a-data-processing-and-model-training)
-  - [B. URL Classification Web App](#b-url-classification-web-app)
-- [📁 Project Structure](#-project-structure)
-- [📝 Notes](#-notes)
-- [🙏 Credits](#-credits)
+- Dataset: `balanced_urls.csv`, 633.011 URL unik, komposisi 50/50 benign dan malicious.
+- Fitur: 20 fitur leksikal (panjang URL, entropi domain, karakter khusus, TLD, karakter Cyrillic, dan lainnya).
+- Model: XGBoost dengan hyperparameter tuning `GridSearchCV`.
+- Aplikasi: Streamlit, input URL lalu prediksi benign/malicious.
+- Evaluasi: 8-fold cross-validation dan holdout 80/20.
 
----
+## Hasil
 
-## 🎯 Overview
+| Eksperimen | Fitur | Hasil |
+|---|---|---|
+| `training.ipynb` (output tersimpan) | 5 | 8-fold CV 97,8%, ROC AUC 0,991 |
+| `training.ipynb` (GridSearch) | 20 | best CV 98,1%, holdout 98% |
+| `experiment-no-scheme.ipynb` | 16, tanpa `secure_http` | CV 87,7%, ROC AUC 0,949 |
+| `experiment-with-scheme.ipynb` | 17, dengan `secure_http` | CV 98,7%, ROC AUC 0,997 |
 
-This project consists of two main components:
+Model final yang dipakai aplikasi ada di `models-balanced/` (20 fitur).
 
-1. **Data Processing and Model Training (`url_classification.py`)**  
-   This script handles data loading, feature engineering, model training with cross-validation, and saving the trained model along with necessary encoders.
+## Keterbatasan (penting)
 
-2. **URL Classification Web App (`app.py`)**  
-   An interactive Streamlit application that allows users to input URLs and receive instant classifications as **MALICIOUS** or **BENIGN**.
+Angka di atas **belum bisa dianggap sebagai performa deteksi phishing yang sebenarnya**. Ada beberapa masalah metodologis:
 
----
+1. **Bias skema URL di dataset.** Semua URL benign memakai `https://`, sedangkan malicious mayoritas `http://` atau tanpa skema. Aturan sederhana "https = benign" saja sudah menghasilkan akurasi 96,8%. Pada uji ulang, fitur `secure_http` menyumbang sekitar 97,8% feature importance. Tanpa fitur skema, akurasi turun ke sekitar 80,8%.
+2. **Kebocoran label dari `TargetEncoder`.** Encoder di-fit pada seluruh data sebelum cross-validation dan sebelum train/test split, lalu dipakai untuk semua fitur numerik. Ini membuat evaluasi terlalu optimistis.
+3. **Split belum per domain.** URL dari domain yang sama bisa muncul di train dan test, sehingga CV belum mengukur generalisasi ke domain baru.
+4. **Input tanpa skema.** Karena model bergantung pada `secure_http`, URL seperti `google.com` (tanpa `https://`) cenderung diprediksi malicious. Aplikasi sebaiknya selalu menerima URL dengan skema.
 
-## 🛠️ Setup Instructions
+Perbaikan yang disarankan: bangun ulang dataset dengan perlakuan skema yang konsisten, hapus `TargetEncoder` untuk fitur numerik, dan evaluasi dengan `GroupKFold` per domain.
 
-Follow these steps to set up and run the applications seamlessly.
+## Struktur
 
-### 1. Create a Virtual Environment
-
-Using a virtual environment ensures that dependencies are managed effectively without interfering with your system's Python installation.
-
-Open your terminal or command prompt and navigate to your project directory:
-
-```bash
-python -m venv venv
+```text
+.
+├── app.py                        # Aplikasi Streamlit
+├── train.py                      # Pipeline training (data, fitur, CV, GridSearchCV)
+├── training.ipynb                # Notebook pipeline final
+├── experiment-no-scheme.ipynb    # Eksperimen tanpa fitur skema
+├── experiment-with-scheme.ipynb  # Eksperimen dengan fitur skema
+├── constant_datas.py             # Daftar TLD terpercaya
+├── requirements.txt
+├── balanced_urls.csv             # Dataset final
+├── models-balanced/              # Model dan encoder yang dipakai app.py
+└── reports/
+    └── gridcv_results.csv        # Hasil grid search
 ```
 
-This command creates a new virtual environment named `venv` in your project directory.
+## Setup
 
-### 2. Activate the Virtual Environment
-
-Activate the virtual environment using the appropriate command based on your operating system:
-
-- **For Windows:**
-
-  ```bash
-  venv\Scripts\activate
-  ```
-
-- **For macOS/Linux:**
-
-  ```bash
-  source venv/bin/activate
-  ```
-
-After activation, your terminal prompt will show `(venv)` indicating that the virtual environment is active.
-
-### 3. Install Dependencies
-
-Ensure you're in the project directory where `requirements.txt` is located. Install all necessary packages using:
+Python yang dipakai: **3.10.15**.
 
 ```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-This command installs all the required packages listed in the `requirements.txt` file.
+## Menjalankan aplikasi
 
----
-
-## 🏃‍♂️ Running the Applications
-
-### A. Data Processing and Model Training
-
-**Script:** `url_classification.py`
-
-This script performs the following tasks:
-
-- **Data Loading:** Reads the dataset containing URLs labeled as malicious or benign.
-- **Feature Engineering:** Extracts meaningful features from URLs to aid in classification.
-- **Model Training:** Trains an XGBoost classifier using cross-validation and handles class imbalance with oversampling.
-- **Saving Artifacts:** Saves the trained model and encoders for future predictions.
-
-**Steps to Run:**
-
-1. **Ensure the Dataset is Available:**
-
-   - Place your dataset CSV file (e.g., `malicious_phish.csv`) in a directory named `data` within your project folder.
-   - Verify that the `DATA_PATH` variable in `url_classification.py` points to the correct location of your dataset.
-
-2. **Run the Script:**
-
-   ```bash
-   python url_classification.py
-   ```
-
-   Sit back and relax! ☕ The script will process the data, train the model, and save the necessary artifacts. This might take some time depending on your system's performance.
-
-3. **Outputs:**
-
-   - **Trained Model:** Saved as `final_xgb_model.pkl` in the `models` directory.
-   - **Encoders:**
-     - `target_encoder.pkl` for categorical feature encoding.
-     - `label_encoder.pkl` for target label encoding.
-
-   Ensure that the `models` directory exists. If not, create it manually or modify the script to handle directory creation.
-
-### B. URL Classification Web App
-
-**Script:** `app.py`
-
-An interactive Streamlit app that lets you input URLs and get instant classifications! 🌐
-
-**Steps to Run:**
-
-1. **Ensure the Trained Model and Encoders are Available:**
-
-   - Make sure `final_xgb_model.pkl`, `target_encoder.pkl`, and `label_encoder.pkl` are present in the `models` directory.
-
-2. **Run the Streamlit App:**
-
-   ```bash
-   streamlit run app.py
-   ```
-
-   The app will automatically open in your default web browser. If it doesn't, navigate to `http://localhost:8501`.
-
-3. **Using the App:**
-
-   - **Input URL:** Enter the URL you want to classify.
-   - **Predict:** Click on the "Prediksi" button to see the magic happen! ✨
-   - **Extracted Features:** View the features extracted from your URL.
-   - **Prediction History:** Check out the "Riwayat Prediksi" tab to see all your past predictions.
-
----
-
-## 📁 Project Structure
-
-Your project directory should look like this:
-
-```
-project/
-├── app.py                     # Streamlit application script
-├── url_classification.py      # Data processing and model training script
-├── requirements.txt           # List of required Python packages
-├── malicious_phish.csv        # Your dataset
-├── models/
-│   ├── final_xgb_model.pkl    # Trained XGBoost model
-│   ├── target_encoder.pkl     # Target encoder for categorical features
-│   └── label_encoder.pkl      # Label encoder for target variable
-└── venv/                      # Virtual environment directory
+```bash
+streamlit run app.py
 ```
 
----
+Buka `http://localhost:8501`, masukkan URL lengkap (contoh: `https://www.google.com`), lalu klik **Prediksi**.
 
-## 📝 Notes
+## Training ulang
 
-- **Dataset Availability:** Ensure that the dataset is placed correctly in the `data` directory.
-- **Adjusting Paths:** Update paths in `url_classification.py` and `app.py` if your directories differ.
-- **Python Version:** Developed and tested on **Python 3.10.15**.
-- **Deactivating Virtual Environment:** When done, deactivate with:
+```bash
+python train.py
+```
 
-  ```bash
-  deactivate
-  ```
+Perintah ini memproses seluruh `balanced_urls.csv`, menjalankan GridSearchCV, lalu **menimpa** model di `models-balanced/`. Prosesnya lama karena feature engineering dilakukan per URL dan grid search memakai banyak kombinasi.
 
-- **Dependencies:** All required packages are in `requirements.txt`. Update if necessary.
-- **Model Retraining:** To retrain with new data or parameters, rerun `url_classification.py`.
-- **Need Help?** Open an issue or reach out if you face any problems!
+Notebook `training.ipynb` bisa dijalankan dengan Jupyter. Output yang tersimpan di notebook berasal dari run eksperimen sebelumnya, jadi angka di dalamnya bisa berbeda dengan source terbaru.
 
----
+## Dataset
 
-## 🙏 Credits
+`balanced_urls.csv` berisi 633.011 URL unik dengan kolom `url`, `label`, dan `result`. Dataset ini diturunkan dari **Malicious URLs dataset** di Kaggle (651.191 URL, label benign/defacement/phishing/malware):
 
-Developed with ❤️ by **Wayan Danu Tirta** (NIM: 123200025)  
-**Universitas Pembangunan Nasional Veteran Yogyakarta**
+<https://www.kaggle.com/datasets/sid321axn/malicious-urls-dataset>
 
----
-
-**Enjoy exploring the world of URL classification!** 🌐🔒
+File asli `malicious_phish.csv` (45 MB) tidak disertakan di repo. Unduh dari Kaggle lalu letakkan di root folder jika ingin membangun ulang dataset dari awal.
