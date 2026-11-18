@@ -47,8 +47,10 @@ Perbaikan yang disarankan: bangun ulang dataset dengan perlakuan skema yang kons
 ├── requirements.txt
 ├── balanced_urls.csv             # Dataset final
 ├── models-balanced/              # Model dan encoder yang dipakai app.py
-└── reports/
-    └── gridcv_results.csv        # Hasil grid search
+├── reports/
+│   └── gridcv_results.csv        # Hasil grid search
+└── docs/
+    └── flowchart/                # Diagram alur, arsitektur, dan screenshot aplikasi
 ```
 
 ## Setup
